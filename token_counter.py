@@ -7,7 +7,7 @@ Supports token counting for:
 - Google Gemini models (via Google GenAI SDK) - requires API key
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, NamedTuple
 from enum import Enum
 
 
@@ -16,6 +16,13 @@ class Provider(Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
+
+
+class TokenCountResult(NamedTuple):
+    """Result of token counting with optional cost estimation"""
+    tokens: int
+    estimated_cost: Optional[float] = None
+    matched_model: Optional[str] = None  # The model ID that was matched for pricing
 
 
 class TokenCounter:
@@ -54,8 +61,9 @@ class TokenCounter:
         self,
         text: str,
         provider: Provider,
-        model: str
-    ) -> int:
+        model: str,
+        estimate_cost: bool = False
+    ) -> TokenCountResult:
         """
         Count tokens for the given text using the specified provider and model.
 
@@ -63,9 +71,10 @@ class TokenCounter:
             text: The text to count tokens for
             provider: The LLM provider (OpenAI, Anthropic, or Gemini)
             model: The specific model name (e.g., 'gpt-4', 'claude-3-opus-20240229', 'gemini-2.0-flash-001')
+            estimate_cost: Whether to estimate the cost (default: False)
 
         Returns:
-            The number of tokens in the text
+            TokenCountResult with token count and optional cost estimation
 
         Raises:
             ValueError: If the provider is not supported or API key is missing
@@ -75,15 +84,23 @@ class TokenCounter:
             - OpenAI: Always offline, no API key needed
             - Anthropic: Requires API key (makes API call)
             - Gemini: Requires API key (makes API call)
+            - Cost estimation: Only includes input token cost (output tokens unknown)
         """
         if provider == Provider.OPENAI:
-            return self._count_openai_tokens(text, model)
+            tokens = self._count_openai_tokens(text, model)
         elif provider == Provider.ANTHROPIC:
-            return self._count_anthropic_tokens(text, model)
+            tokens = self._count_anthropic_tokens(text, model)
         elif provider == Provider.GEMINI:
-            return self._count_gemini_tokens(text, model)
+            tokens = self._count_gemini_tokens(text, model)
         else:
             raise ValueError(f"Unsupported provider: {provider}")
+
+        # Calculate cost if requested
+        if estimate_cost:
+            cost, matched_model = self._estimate_cost(tokens, provider, model)
+            return TokenCountResult(tokens=tokens, estimated_cost=cost, matched_model=matched_model)
+        else:
+            return TokenCountResult(tokens=tokens)
 
     def _count_openai_tokens(self, text: str, model: str) -> int:
         """Count tokens using tiktoken for OpenAI models"""
@@ -170,6 +187,43 @@ class TokenCounter:
 
         return response.total_tokens
 
+    def _estimate_cost(self, tokens: int, provider: Provider, model: str) -> tuple[Optional[float], Optional[str]]:
+        """
+        Estimate the cost for input tokens using genai-prices.
+
+        Args:
+            tokens: Number of input tokens
+            provider: The LLM provider
+            model: The model name
+
+        Returns:
+            Tuple of (estimated_cost, matched_model_id)
+            Returns (None, None) if pricing data is not available
+        """
+        try:
+            from genai_prices import Usage, calc_price
+        except ImportError:
+            # genai-prices is optional, return None if not installed
+            return None, None
+
+        # Map our Provider enum to genai-prices provider_id
+        provider_mapping = {
+            Provider.OPENAI: "openai",
+            Provider.ANTHROPIC: "anthropic",
+            Provider.GEMINI: "google",
+        }
+
+        try:
+            price_data = calc_price(
+                Usage(input_tokens=tokens, output_tokens=0),
+                model_ref=model,
+                provider_id=provider_mapping[provider],
+            )
+            return price_data.total_price, price_data.model.id
+        except Exception:
+            # If pricing fails, return None (model not found, etc.)
+            return None, None
+
 
 def main():
     """Example usage of the TokenCounter"""
@@ -186,8 +240,12 @@ def main():
     counter = TokenCounter()
 
     try:
-        openai_tokens = counter.count_tokens(text, Provider.OPENAI, "gpt-4o")
-        print(f"OpenAI (gpt-4o): {openai_tokens} tokens ✓")
+        result = counter.count_tokens(text, Provider.OPENAI, "gpt-4o", estimate_cost=True)
+        print(f"OpenAI (gpt-4o): {result.tokens} tokens")
+        if result.estimated_cost is not None:
+            print(f"  Estimated cost: ${result.estimated_cost:.6f}")
+            if result.matched_model and result.matched_model != "gpt-4o":
+                print(f"  (matched to: {result.matched_model})")
     except Exception as e:
         print(f"OpenAI error: {e}")
 
@@ -203,19 +261,27 @@ def main():
 
     # Anthropic
     try:
-        anthropic_tokens = counter_with_keys.count_tokens(
-            text, Provider.ANTHROPIC, "claude-sonnet-4-20250514"
+        result = counter_with_keys.count_tokens(
+            text, Provider.ANTHROPIC, "claude-sonnet-4-20250514", estimate_cost=True
         )
-        print(f"Anthropic (claude-sonnet-4): {anthropic_tokens} tokens")
+        print(f"Anthropic (claude-sonnet-4): {result.tokens} tokens")
+        if result.estimated_cost is not None:
+            print(f"  Estimated cost: ${result.estimated_cost:.6f}")
+            if result.matched_model and result.matched_model != "claude-sonnet-4-20250514":
+                print(f"  (matched to: {result.matched_model})")
     except Exception as e:
         print(f"Anthropic error: {e}")
 
     # Gemini
     try:
-        gemini_tokens = counter_with_keys.count_tokens(
-            text, Provider.GEMINI, "gemini-2.0-flash-001"
+        result = counter_with_keys.count_tokens(
+            text, Provider.GEMINI, "gemini-2.0-flash-001", estimate_cost=True
         )
-        print(f"Gemini (gemini-2.0-flash): {gemini_tokens} tokens")
+        print(f"Gemini (gemini-2.0-flash): {result.tokens} tokens")
+        if result.estimated_cost is not None:
+            print(f"  Estimated cost: ${result.estimated_cost:.6f}")
+            if result.matched_model and result.matched_model != "gemini-2.0-flash-001":
+                print(f"  (matched to: {result.matched_model})")
     except Exception as e:
         print(f"Gemini error: {e}")
 

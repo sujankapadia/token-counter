@@ -154,6 +154,19 @@ wheels = [
 ]
 
 [[package]]
+name = "genai-prices"
+version = "0.0.34"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d4/85/d4dade0d827fe60adf816820bd9088fe6f07f0a146e578371317eb23ec49/genai_prices-0.0.34.tar.gz", hash = "sha256:f5aa77ad4eb499840b9921b015633352a5b23a2eab97f4d0b7b80581e5052741", size = 45906 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/60/4d8f424f9236d05fb861a9ee9dbac69ad1985c44e390512e6d3baf478b8f/genai_prices-0.0.34-py3-none-any.whl", hash = "sha256:67fba842ee5248f8144ab70afa96c3a8622f9f7c1f72582546e9c134d7b607d1", size = 48522 },
+]
+
+[[package]]
 name = "google-auth"
 version = "2.41.1"
 source = { registry = "https://pypi.org/simple" }
@@ -619,6 +632,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "genai-prices" },
     { name = "google-genai" },
     { name = "tiktoken" },
 ]
@@ -626,6 +640,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.43.0" },
+    { name = "genai-prices", specifier = ">=0.0.34" },
     { name = "google-genai", specifier = ">=1.0.0" },
     { name = "tiktoken", specifier = ">=0.8.0" },
 ]

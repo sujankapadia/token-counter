@@ -36,6 +36,10 @@ Examples:
   export GOOGLE_API_KEY="your-key"  # or GEMINI_API_KEY
   %(prog)s gemini "Hello, world!"
 
+  # Estimate cost (input tokens only)
+  %(prog)s openai "Hello, world!" --cost
+  %(prog)s anthropic "Hello, world!" --cost --quiet
+
 API Key Requirements:
   OpenAI:    No API key needed (offline)
   Gemini:    Requires GOOGLE_API_KEY or GEMINI_API_KEY (GOOGLE_API_KEY takes precedence)
@@ -82,6 +86,12 @@ API Key Requirements:
         "--quiet",
         action="store_true",
         help="Output only the token count number",
+    )
+
+    parser.add_argument(
+        "--cost",
+        action="store_true",
+        help="Estimate input token cost (requires genai-prices library)",
     )
 
     args = parser.parse_args()
@@ -135,13 +145,25 @@ API Key Requirements:
 
     # Count tokens
     try:
-        token_count = counter.count_tokens(text, provider, model)
+        result = counter.count_tokens(text, provider, model, estimate_cost=args.cost)
 
         if args.quiet:
-            print(token_count)
+            if args.cost and result.estimated_cost is not None:
+                print(f"{result.tokens},{result.estimated_cost:.6f}")
+            else:
+                print(result.tokens)
         else:
             mode = " (offline)" if provider == Provider.OPENAI else ""
-            print(f"{args.provider.capitalize()} ({model}){mode}: {token_count} tokens")
+            print(f"{args.provider.capitalize()} ({model}){mode}: {result.tokens} tokens")
+
+            if args.cost:
+                if result.estimated_cost is not None:
+                    print(f"Estimated cost: ${result.estimated_cost:.6f} (input tokens only)")
+                    # Show warning if model was matched to a different ID
+                    if result.matched_model and result.matched_model != model:
+                        print(f"Note: Pricing matched to model '{result.matched_model}'")
+                else:
+                    print("Cost estimation unavailable (pricing data not found)")
 
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)

@@ -12,9 +12,17 @@ A unified Python utility for counting tokens across multiple LLM providers: Open
 
 ## Features
 
-- **OpenAI**: Uses `tiktoken` library for accurate offline token counting (no API key needed)
-- **Anthropic**: Uses the Anthropic SDK's `count_tokens` API (requires API key)
-- **Gemini**: Uses the Google GenAI SDK's `count_tokens` API (requires API key)
+- **Token Counting**:
+  - **OpenAI**: Uses `tiktoken` library for accurate offline token counting (no API key needed)
+  - **Anthropic**: Uses the Anthropic SDK's `count_tokens` API (requires API key)
+  - **Gemini**: Uses the Google GenAI SDK's `count_tokens` API (requires API key)
+
+- **Cost Estimation** (Optional):
+  - Estimates input token costs using the [`genai-prices`](https://github.com/pydantic/genai-prices) library
+  - Works with all three providers (OpenAI, Anthropic, Gemini)
+  - Automatically matches model names to pricing data
+  - Shows warnings when model names are normalized for pricing
+  - Note: Only estimates input token costs (output tokens unknown at counting time)
 
 ## Installation
 
@@ -50,7 +58,7 @@ pip install -r requirements.txt
 Or install packages individually:
 
 ```bash
-pip install tiktoken anthropic google-genai
+pip install tiktoken anthropic google-genai genai-prices
 ```
 
 ## Usage
@@ -92,6 +100,16 @@ uv run token-counter gemini "Hello, world!" --model gemini-1.5-pro
 uv run token-counter openai "Hello, world!" --quiet
 # Output: 4
 
+# Estimate input token cost
+uv run token-counter openai "Hello, world!" --cost
+# Output:
+# Openai (gpt-4o) (offline): 4 tokens
+# Estimated cost: $0.000010 (input tokens only)
+
+# Cost with quiet mode (outputs: tokens,cost)
+uv run token-counter anthropic "Hello, world!" --cost --quiet
+# Output: 12,0.000036
+
 # Get help
 uv run token-counter --help
 ```
@@ -108,9 +126,14 @@ counter = TokenCounter()
 
 text = "Hello, world! How many tokens is this message?"
 
-# OpenAI - works offline
-openai_tokens = counter.count_tokens(text, Provider.OPENAI, "gpt-4o")
-print(f"OpenAI: {openai_tokens} tokens")
+# Count tokens only
+result = counter.count_tokens(text, Provider.OPENAI, "gpt-4o")
+print(f"OpenAI: {result.tokens} tokens")
+
+# Count tokens with cost estimation
+result = counter.count_tokens(text, Provider.OPENAI, "gpt-4o", estimate_cost=True)
+print(f"OpenAI: {result.tokens} tokens")
+print(f"Estimated cost: ${result.estimated_cost:.6f}")
 ```
 
 #### Anthropic & Gemini - API Keys Required
@@ -128,17 +151,22 @@ counter = TokenCounter(
 
 text = "Hello, world! How many tokens is this message?"
 
-# Anthropic
-anthropic_tokens = counter.count_tokens(
-    text, Provider.ANTHROPIC, "claude-sonnet-4-20250514"
+# Anthropic with cost estimation
+result = counter.count_tokens(
+    text, Provider.ANTHROPIC, "claude-sonnet-4-20250514", estimate_cost=True
 )
-print(f"Anthropic: {anthropic_tokens} tokens")
+print(f"Anthropic: {result.tokens} tokens")
+if result.estimated_cost:
+    print(f"Estimated cost: ${result.estimated_cost:.6f}")
+    # Check if model name was normalized for pricing
+    if result.matched_model != "claude-sonnet-4-20250514":
+        print(f"Note: Pricing matched to '{result.matched_model}'")
 
 # Gemini
-gemini_tokens = counter.count_tokens(
+result = counter.count_tokens(
     text, Provider.GEMINI, "gemini-2.0-flash-001"
 )
-print(f"Gemini: {gemini_tokens} tokens")
+print(f"Gemini: {result.tokens} tokens")
 ```
 
 #### Run the Example Script
